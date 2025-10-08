@@ -470,8 +470,8 @@ module.exports = function (RED) {
                 node.status(generateStatus(node.endpoint.getStatus(), tag.value));
             } catch (err) {
                 // Only log error if it's not a timeout (to avoid log spam)
-                if (!err.message.includes('TIMEOUT')) {
-                    node.error('Error reading tag: ' + err.message);
+                if (!err.message || !err.message.includes('TIMEOUT')) {
+                    node.error('Error reading tag: ' + (err.message || String(err)));
                 }
             } finally {
                 isReading = false;
@@ -511,8 +511,8 @@ module.exports = function (RED) {
                         }
                     } catch (err) {
                         // Continue reading other tags even if one fails
-                        if (!err.message.includes('TIMEOUT')) {
-                            node.error('Error reading tag ' + tagObj.name + ': ' + err.message);
+                        if (!err.message || !err.message.includes('TIMEOUT')) {
+                            node.error('Error reading tag ' + tagObj.name + ': ' + (err.message || String(err)));
                         }
                     }
                 }
@@ -531,8 +531,8 @@ module.exports = function (RED) {
 
                 node.status(generateStatus(node.endpoint.getStatus()));
             } catch (err) {
-                if (!err.message.includes('TIMEOUT')) {
-                    node.error('Error reading tags: ' + err.message);
+                if (!err.message || !err.message.includes('TIMEOUT')) {
+                    node.error('Error reading tags: ' + (err.message || String(err)));
                 }
             } finally {
                 isReading = false;
@@ -650,8 +650,8 @@ module.exports = function (RED) {
                 } catch (err) {
                     done(err);
                     // Only log non-timeout errors
-                    if (!err.message.includes('TIMEOUT')) {
-                        node.error('Error writing tag: ' + err.message);
+                    if (!err.message || !err.message.includes('TIMEOUT')) {
+                        node.error('Error writing tag: ' + (err.message || String(err)));
                     }
                 }
             }

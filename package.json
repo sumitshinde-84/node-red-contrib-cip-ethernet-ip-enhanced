@@ -1,6 +1,6 @@
 {
     "name": "@sumit_shinde_84/node-red-contrib-cip-ethernet-ip-enhanced",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "description": "Enhanced Node-RED node for Allen Bradley / Rockwell PLCs with Connected Messaging support (Micro 800/850/870 series)",
     "main": "index.js",
     "dependencies": {
