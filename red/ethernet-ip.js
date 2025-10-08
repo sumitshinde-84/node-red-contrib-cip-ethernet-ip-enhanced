@@ -28,9 +28,20 @@ module.exports = function (RED) {
         EventEmitter
     } = require('events');
 
-    // ---------- Micro 800 Patch ----------
-    // Patch Controller.connect to support Micro 800/850/870 PLCs
-    // These PLCs don't use PORT segments in Forward Open connections
+    // ---------- Constants ----------
+    const DEFAULT_CYCLE_TIME = 500;
+    const MIN_CYCLE_TIME = 2000; // Minimum for connected messaging to avoid queue overflow
+    const CONNECTION_WAIT_TIME = 3000; // Wait time before starting polling
+    const RECONNECT_DELAY = 5000;
+
+    // ---------- Connected Messaging Patch ----------
+    // NOTE: This modifies the Controller prototype to support Connected Messaging mode.
+    // This is necessary because st-ethernet-ip doesn't provide hooks for custom connection paths.
+    //
+    // Connection Modes:
+    // - 'standard': Traditional unconnected messaging with PORT segments
+    // - 'connected': Connected messaging WITHOUT PORT segments (for direct-connect PLCs)
+    // - 'connected-routing': Connected messaging WITH PORT segments (for chassis-based PLCs)
 
     const originalControllerConnect = Controller.prototype.connect;
 
@@ -38,15 +49,22 @@ module.exports = function (RED) {
         const { PORT } = EthernetIP.CIP.EPATH.segments;
         const BACKPLANE = 1;
 
-        // Check if Micro 800 mode is enabled (stored in controller instance)
-        const isMicro800 = this._micro800Mode === true;
+        // Get connection mode from controller instance
+        const connectionMode = this._connectionMode || 'standard';
 
-        if (isMicro800) {
-            // Micro 800: Skip PORT segment in connection path
+        // Determine if we need PORT segments
+        const needsPortSegment = connectionMode !== 'connected';
+
+        // Determine if we need Forward Open (connected messaging)
+        const needsForwardOpen = connectionMode === 'connected' || connectionMode === 'connected-routing';
+
+        // Configure connection path
+        if (!needsPortSegment) {
+            // Connected mode without routing: Skip PORT segment
             this.state.controller.slot = SLOT;
             this.state.controller.path = Buffer.alloc(0); // Empty path
         } else if (typeof SLOT === "number") {
-            // Standard ControlLogix/CompactLogix path
+            // Standard or connected with routing: Use PORT segment
             this.state.controller.slot = SLOT;
             this.state.controller.path = PORT.build(BACKPLANE, SLOT);
         } else if (Buffer.isBuffer(SLOT)) {
@@ -63,14 +81,14 @@ module.exports = function (RED) {
 
         this._initializeControllerEventHandlers();
 
-        // For st-ethernet-ip with connected messaging, establish Forward Open for Micro 800
-        if (isMicro800 && this.state.connectedMessaging === true) {
+        // Establish Forward Open for connected messaging modes
+        if (needsForwardOpen && this.state.connectedMessaging === true) {
             const connid = await this.forwardOpen();
             if (!connid) throw new Error("Failed to Establish Forward Open Connection with Controller");
         }
 
-        // Skip readControllerProps and getControllerTagList for Micro 800 (not needed/supported)
-        if (!isMicro800) {
+        // Skip readControllerProps for connected mode without routing (not supported by some PLCs)
+        if (connectionMode !== 'connected') {
             await this.readControllerProps();
         }
     };
@@ -78,7 +96,7 @@ module.exports = function (RED) {
     // ---------- Ethernet-IP Endpoint ----------
 
     function generateStatus(status, val) {
-        var obj;
+        let obj;
 
         if (typeof val != 'string' && typeof val != 'number' && typeof val != 'boolean') {
             val = RED._("ethip.endpoint.status.online");
@@ -132,13 +150,13 @@ module.exports = function (RED) {
 
     function EthIpEndpoint(config) {
         EventEmitter.call(this);
-        var node = this;
-        var status;
-        var isVerbose = RED.settings.get('verbose');
-        var connectTimeoutTimer;
-        var connected = false;
-        var closing = false;
-        var tags = new Map();
+        const node = this;
+        let status;
+        const isVerbose = RED.settings.get('verbose');
+        let connectTimeoutTimer;
+        let connected = false;
+        let closing = false;
+        const tags = new Map();
 
         RED.nodes.createNode(this, config);
 
@@ -218,18 +236,18 @@ module.exports = function (RED) {
 
             connected = true;
 
-            // For Micro 800, skip auto-scanning (not supported properly)
+            // In connected messaging mode, skip auto-scanning (not supported properly by some PLCs)
             // Tags will be read on-demand instead
-            const isMicro800 = node._plc._isMicro800 === true;
-            if (!isMicro800) {
+            const isConnected = node._plc._isConnected === true;
+            if (!isConnected) {
                 for (let t of tags.values()) {
                     node._plc.subscribe(t);
                 }
 
-                node._plc.scan_rate = parseInt(config.cycletime) || 500;
+                node._plc.scan_rate = parseInt(config.cycletime) || DEFAULT_CYCLE_TIME;
                 node._plc.scan().catch(onScanError);
             } else if (isVerbose) {
-                node.log('Micro 800 mode: Auto-scanning disabled, using on-demand reads');
+                node.log('Connected messaging mode: Auto-scanning disabled, using on-demand reads');
             }
         }
 
@@ -273,7 +291,7 @@ module.exports = function (RED) {
             }
 
             //try to reconnect if failed to connect
-            connectTimeoutTimer = setTimeout(connect, 5000);
+            connectTimeoutTimer = setTimeout(connect, RECONNECT_DELAY);
         }
 
         function onControllerClose(err) {
@@ -287,8 +305,8 @@ module.exports = function (RED) {
         function destroyPLC() {
             if (node._plc) {
                 node._plc.destroy();
-                
-                //TODO remove listeners
+
+                // Remove event listeners to prevent memory leaks
                 node._plc.removeListener("close", onControllerClose);
                 node._plc.removeListener("error", onControllerError);
                 node._plc.removeListener("end", onControllerEnd);
@@ -346,18 +364,30 @@ module.exports = function (RED) {
 
             connected = false;
 
-            // Micro 800 requires connected messaging (Forward Open), ControlLogix uses unconnected
-            const isMicro800 = config.micro800 === true;
-            const connectedMessaging = isMicro800;
+            // Get connection mode from config (default to 'standard')
+            // Handle backward compatibility: migrate old properties to new 'connectionMode'
+            let connectionMode = config.connectionMode;
+            if (!connectionMode) {
+                // Migrate old configs to new connectionMode
+                if (config.connected === true || config.micro800 === true || config.connectedMessaging === true) {
+                    connectionMode = 'connected'; // Old connected mode becomes 'connected' (no routing)
+                } else {
+                    connectionMode = 'standard';
+                }
+            }
+
+            // Determine if connected messaging should be used
+            const useConnectedMessaging = connectionMode === 'connected' || connectionMode === 'connected-routing';
+            const connectedMessaging = useConnectedMessaging;
 
             node._plc = new Controller(connectedMessaging);
 
-            // Set Micro 800 mode flag on controller instance
-            node._plc._micro800Mode = isMicro800;
-            node._plc._isMicro800 = isMicro800; // Store for use in nodes
+            // Set connection mode on controller instance
+            node._plc._connectionMode = connectionMode;
+            node._plc._isConnected = useConnectedMessaging; // Store for use in nodes
 
-            if (isMicro800 && isVerbose) {
-                node.log('Micro 800/850 mode enabled with connected messaging');
+            if (useConnectedMessaging && isVerbose) {
+                node.log(`Connected messaging mode enabled: ${connectionMode}`);
             }
 
             node._plc.removeListener("close", node._plc._handleCloseEvent);
@@ -378,8 +408,9 @@ module.exports = function (RED) {
     function EthIpIn(config) {
         const node = this;
         let statusVal, tag;
-        let micro800Interval;
+        let connectedInterval;
         let isReading = false; // Prevent overlapping reads
+        const isVerbose = RED.settings.get('verbose');
         RED.nodes.createNode(this, config);
 
         node.endpoint = RED.nodes.getNode(config.endpoint);
@@ -413,10 +444,13 @@ module.exports = function (RED) {
             node.status(generateStatus(s.status, config.mode === 'single' ? statusVal : null));
         }
 
-        // Micro 800 manual read function with overlap protection (single mode)
-        async function micro800ReadSingle() {
+        // Connected messaging manual read function with overlap protection (single mode)
+        async function connectedReadSingle() {
             // Prevent overlapping reads
-            if (isReading) return;
+            if (isReading) {
+                if (isVerbose) node.warn('Skipping read - previous read still in progress');
+                return;
+            }
 
             // Check if connected before attempting read
             if (!node.endpoint._plc || !tag || node.endpoint.getStatus() !== 'online') {
@@ -444,10 +478,13 @@ module.exports = function (RED) {
             }
         }
 
-        // Micro 800 manual read function for all tags (all-split and all modes)
-        async function micro800ReadAll() {
+        // Connected messaging manual read function for all tags (all-split and all modes)
+        async function connectedReadAll() {
             // Prevent overlapping reads
-            if (isReading) return;
+            if (isReading) {
+                if (isVerbose) node.warn('Skipping read - previous read still in progress');
+                return;
+            }
 
             // Check if connected before attempting read
             if (!node.endpoint._plc || node.endpoint.getStatus() !== 'online') {
@@ -502,7 +539,7 @@ module.exports = function (RED) {
             }
         }
 
-        const isMicro800 = node.endpoint._plc?._isMicro800 === true;
+        const isConnected = node.endpoint._plc?._isConnected === true;
 
         if (config.mode === 'single') {
             let tagName = `${config.program}:${config.variable}`;
@@ -515,36 +552,36 @@ module.exports = function (RED) {
                 }));
             }
 
-            // For Micro 800, use polling instead of events
-            if (isMicro800) {
+            // In connected messaging mode, use polling instead of events
+            if (isConnected) {
                 // Wait for connection to be established before starting polling
                 setTimeout(() => {
-                    // Use longer cycle time for Micro 800 (minimum 2 seconds to avoid queue overflow)
-                    let cycletime = Math.max(parseInt(node.endpoint.state?.cycletime) || 2000, 2000);
-                    micro800Interval = setInterval(micro800ReadSingle, cycletime);
-                }, 3000); // Wait 3 seconds for connection
+                    // Use longer cycle time (minimum to avoid queue overflow)
+                    let cycletime = Math.max(parseInt(node.endpoint.state?.cycletime) || MIN_CYCLE_TIME, MIN_CYCLE_TIME);
+                    connectedInterval = setInterval(connectedReadSingle, cycletime);
+                }, CONNECTION_WAIT_TIME);
             } else {
                 tag.on('Initialized', onChanged);
                 tag.on('Changed', onChanged);
             }
         } else if (config.mode === 'all-split') {
-            if (isMicro800) {
+            if (isConnected) {
                 // Polling for all-split mode
                 setTimeout(() => {
-                    let cycletime = Math.max(parseInt(node.endpoint.state?.cycletime) || 2000, 2000);
-                    micro800Interval = setInterval(micro800ReadAll, cycletime);
-                }, 3000);
+                    let cycletime = Math.max(parseInt(node.endpoint.state?.cycletime) || MIN_CYCLE_TIME, MIN_CYCLE_TIME);
+                    connectedInterval = setInterval(connectedReadAll, cycletime);
+                }, CONNECTION_WAIT_TIME);
             } else {
                 node.endpoint.on('__ALL_CHANGED__', onChanged);
             }
         } else {
             // "all" mode
-            if (isMicro800) {
+            if (isConnected) {
                 // Polling for all mode
                 setTimeout(() => {
-                    let cycletime = Math.max(parseInt(node.endpoint.state?.cycletime) || 2000, 2000);
-                    micro800Interval = setInterval(micro800ReadAll, cycletime);
-                }, 3000);
+                    let cycletime = Math.max(parseInt(node.endpoint.state?.cycletime) || MIN_CYCLE_TIME, MIN_CYCLE_TIME);
+                    connectedInterval = setInterval(connectedReadAll, cycletime);
+                }, CONNECTION_WAIT_TIME);
             } else {
                 node.endpoint.on('__ALL_CHANGED__', onChangedAllValues);
             }
@@ -555,8 +592,8 @@ module.exports = function (RED) {
         node.endpoint.on('__STATUS__', onEndpointStatus);
 
         node.on('close', function (done) {
-            if (micro800Interval) {
-                clearInterval(micro800Interval);
+            if (connectedInterval) {
+                clearInterval(connectedInterval);
             }
             node.endpoint.removeListener('__ALL_CHANGED__', onChanged);
             node.endpoint.removeListener('__ALL_CHANGED__', onChangedAllValues);
@@ -573,42 +610,42 @@ module.exports = function (RED) {
     // ---------- Ethernet-IP Out ----------
 
     function EthIpOut(config) {
-        var node = this;
-        var statusVal, tag;
-        var isWriting = false; // Prevent overlapping writes
+        const node = this;
+        let statusVal = null;
+        let tag = null;
+        let isWriting = false;
+        const writeQueue = []; // Queue for pending writes
+        let processingQueue = false;
         RED.nodes.createNode(this, config);
 
         node.endpoint = RED.nodes.getNode(config.endpoint);
         if (!node.endpoint) {
-            return node.error(RED._("ethip.in.error.missingconfig"));
+            return node.error(RED._("ethip.out.error.missingconfig"));
         }
 
         function onEndpointStatus(s) {
             node.status(generateStatus(s.status, statusVal));
         }
 
-        async function onNewMsg(msg, send, done) {
-            statusVal = msg.payload;
+        // Process write queue sequentially
+        async function processWriteQueue() {
+            if (processingQueue || writeQueue.length === 0) return;
 
-            const isMicro800 = node.endpoint._plc?._isMicro800 === true;
+            processingQueue = true;
 
-            if (isMicro800) {
-                // Micro 800: Immediate write with overlap protection
-                if (isWriting) {
-                    done(new Error('Previous write still in progress'));
-                    return;
-                }
+            while (writeQueue.length > 0) {
+                const {value, done} = writeQueue.shift();
 
-                if (!node.endpoint._plc || !tag) {
+                if (!node.endpoint._plc || !tag || node.endpoint.getStatus() !== 'online') {
                     done(new Error('PLC not connected'));
-                    return;
+                    continue;
                 }
 
-                isWriting = true;
                 try {
-                    tag.value = statusVal;
+                    tag.value = value;
                     await node.endpoint._plc.writeTag(tag);
                     done();
+                    statusVal = value;
                     node.status(generateStatus(node.endpoint.getStatus(), statusVal));
                 } catch (err) {
                     done(err);
@@ -616,12 +653,34 @@ module.exports = function (RED) {
                     if (!err.message.includes('TIMEOUT')) {
                         node.error('Error writing tag: ' + err.message);
                     }
-                } finally {
-                    isWriting = false;
                 }
+            }
+
+            processingQueue = false;
+        }
+
+        async function onNewMsg(msg, send, done) {
+            const value = msg.payload;
+            const isConnected = node.endpoint._plc?._isConnected === true;
+
+            if (isConnected) {
+                // Connected messaging: Queue writes to prevent overlap
+                writeQueue.push({value, done});
+
+                // Limit queue size to prevent memory issues
+                if (writeQueue.length > 100) {
+                    const dropped = writeQueue.shift();
+                    dropped.done(new Error('Write queue full - message dropped'));
+                    node.warn('Write queue full, dropping oldest message');
+                }
+
+                processWriteQueue().catch(err => {
+                    node.error('Error processing write queue: ' + err.message);
+                });
             } else {
                 // Standard mode: write will be performed by scan cycle
-                tag.value = statusVal;
+                statusVal = value;
+                tag.value = value;
                 done();
                 node.status(generateStatus(node.endpoint.getStatus(), statusVal));
             }
@@ -644,6 +703,13 @@ module.exports = function (RED) {
 
         node.on('close', function (done) {
             node.endpoint.removeListener('__STATUS__', onEndpointStatus);
+
+            // Clear any pending writes in queue
+            while (writeQueue.length > 0) {
+                const pending = writeQueue.shift();
+                pending.done(new Error('Node closing'));
+            }
+
             done();
         });
 

@@ -1,49 +1,96 @@
-# node-red-contrib-cip-ethernet-ip
+# node-red-contrib-cip-ethernet-ip-enhanced
 
-A Node-RED node to interact with Allen Bradley / Rockwell PLCs using the EtherNet/IP protocol.
-Based on the awesome work of [cmseaton42/node-ethernet-ip](https://github.com/cmseaton42/node-ethernet-ip).
+An enhanced Node-RED node for Allen Bradley / Rockwell PLCs with full Connected Messaging support.
 
-This node was created as part of the [ST-One](https://st-one.io) project.
+> **Modified Version Notice**: This package is a modified version of [node-red-contrib-cip-ethernet-ip](https://github.com/st-one-io/node-red-contrib-cip-ethernet-ip) by ST-One Ltda. The enhancements include additional connection modes and improved Connected Messaging Protocol support. This modified version is distributed under the same GPL-3.0-or-later license as the original.
 
-## Install
+## Features
 
-You can install this node directly from the "Manage Palette" menu in the Node-RED interface.
+- **Multiple Connection Modes**: Standard unconnected, Connected Messaging without routing, and Connected Messaging with routing
+- **Broad PLC Support**: Compatible with various Allen Bradley / Rockwell automation controllers
+- **Variable Monitoring**: Real-time reading and writing of PLC tags
+- **Flexible Output Modes**: Single variable, all variables, or one message per variable
+- **Change Detection**: Optional "diff" mode to only send messages when values change
 
-Alternatively, run the following command in your Node-RED user directory - typically `~/.node-red` on Linux or `%HOMEPATH%\.nodered` on Windows
+## Inspiration & Credits
 
-        npm install node-red-contrib-cip-ethernet-ip
+This node is **inspired by** and **based on** the excellent work of:
 
-NodeJS version 10 or greater and Node-RED version 1.0 or greater is required.
+- [**node-red-contrib-cip-ethernet-ip**](https://github.com/st-one-io/node-red-contrib-cip-ethernet-ip) - The original package
 
+### What Makes This Enhanced?
+
+This enhanced version adds **full Connected Messaging Protocol support** with three connection modes:
+
+1. **Standard (Unconnected)** - Traditional unconnected messaging for all PLCs
+2. **Connected Messaging (No Routing)** - For direct-connect PLCs that don't require backplane routing
+3. **Connected Messaging (With Routing)** - For chassis-based PLCs using Forward Open with routing
+
+## Installation
+
+### Via Node-RED Palette Manager
+
+1. Open Node-RED in your browser
+2. Click the menu (☰) → Manage palette
+3. Go to the "Install" tab
+4. Search for `node-red-contrib-cip-ethernet-ip-enhanced`
+5. Click "Install"
+
+### Via npm
+
+Run the following command in your Node-RED user directory (typically `~/.node-red` on Linux or `%HOMEPATH%\.nodered` on Windows):
+
+```bash
+npm install node-red-contrib-cip-ethernet-ip-enhanced
+```
 
 ## Usage
 
-Each connection to a PLC is represented by the **ETH-IP Endpoint** configuration node. You can configure the PLC's Address, the variables available and their addresses, and the cycle time for reading the variables.
+### 1. Configure the Endpoint
 
-The **ETH-IP In** node makes the variable's values available in a flow in three different modes:
+Each PLC connection is represented by an **ETH-IP Endpoint** configuration node:
 
-*   **Single variable:** A single variable can be selected from the configured variables, and a message is sent every cycle, or only when it changes if _diff_ is checked. `msg.payload` contains the variable's value and `msg.topic` has the variable's name.
-*   **All variables, one per message:** Like the _Single variable_ mode, but for all variables configured. If _diff_ is checked, a message is sent everytime any variable changes. If _diff_ is unchecked, one message is sent for every variable, in every cycle. Care must be taken about the number of messages per second in this mode.
-*   **All variables:** In this mode, `msg.payload` contains an object with all configured variables and their values. If _diff_ is checked, a message is sent if at least one of the variables changes its value.
+- **Address**: IP address of your PLC (e.g., `192.168.1.10`)
+- **Slot**: Slot number (default: 0)
+- **Connection Mode**: Choose the appropriate mode for your PLC:
+  - **Standard (Unconnected)** - Default mode, works with all PLCs
+  - **Connected Messaging (No Routing)** - For PLCs that connect directly without backplane routing
+  - **Connected Messaging (With Routing)** - For chassis-based PLCs that need routing but benefit from connected sessions
+- **Cycle Time**: How often to read variables (in milliseconds, e.g., 500)
+- **Variables**: Define your tags with their names and addresses
 
+#### Choosing the Right Connection Mode
+
+| PLC Configuration | Recommended Mode | Why |
+|----------|-----------------|-----|
+| Direct Ethernet connection | Connected Messaging (No Routing) | No backplane routing needed |
+| Chassis-based with slot routing | Standard or Connected Messaging (With Routing) | Requires routing through chassis |
+| Legacy controllers | Standard | Traditional unconnected messaging |
+
+## License
+
+Copyright (c) 2016-2020, ST-One Ltda., Guilherme Francescon Cittolin
+
+Copyright (c) 2025, Enhanced version contributors
+
+GNU General Public License v3.0 or later (see [LICENSE](LICENSE) or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 ## Disclaimer
 
-The Software is provided "AS IS", without warranty of any kind. The Licensor makes no warranty that the Software is free of defects or is suitable for any particular purpose. In no event shall the Licensor be responsible for loss or damages arising from the installation or use of the Software
+The Software is provided "AS IS", without warranty of any kind. The Licensor makes no warranty that the Software is free of defects or is suitable for any particular purpose. In no event shall the Licensor be responsible for loss or damages arising from the installation or use of the Software.
 
+## Contributing
 
-## Bugs and enhancements
+Contributions are welcome! Please feel free to:
 
-Please share your ideas and experiences on the [Node-RED forum](https://discourse.nodered.org/), or open an issue on the [page of the project on GitHub](https://github.com/st-one-io/node-red-contrib-cip-ethernet-ip)
-
+- Report bugs by opening an issue
+- Suggest enhancements
+- Submit pull requests
 
 ## Support
 
-Community support is offered on a best-effort basis via GitHub Issues. For commercial support, please contact us by sending an e-mail to [st-one@st-one.io](mailto:st-one@st-one.io).
+Community support is offered on a best-effort basis via GitHub Issues and the Node-RED forum at [https://discourse.nodered.org/](https://discourse.nodered.org/)
 
+## Keywords
 
-## License
-Copyright: (c) 2016-2020, ST-One Ltda., Guilherme Francescon Cittolin <guilherme@st-one.io>
-
-GNU General Public License v3.0+ (see [LICENSE](LICENSE) or https://www.gnu.org/licenses/gpl-3.0.txt)
-
+`node-red`, `ethernet-ip`, `allen-bradley`, `rockwell`, `plc`, `industrial`, `automation`, `connected-messaging`, `cip`, `ethernetip`, `forward-open`

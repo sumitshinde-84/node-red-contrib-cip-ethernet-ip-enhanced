@@ -56,8 +56,12 @@
 				<input type="text" id="node-config-input-slot" data-i18n="[placeholder]ethip.endpoint.label.port" style="width: 50px">
 			</div>
 			<div class="form-row">
-				<label for="node-config-input-micro800"><i class="fa fa-plug"></i> Use Connected Messaging</label>
-				<input type="checkbox" id="node-config-input-micro800" style="display:inline-block; width:auto; vertical-align:baseline;">
+				<label for="node-config-input-connectionMode"><i class="fa fa-plug"></i> Connection Mode</label>
+				<select id="node-config-input-connectionMode" style="width: 70%;">
+					<option value="standard">Standard (Unconnected)</option>
+					<option value="connected">Connected Messaging (No Routing)</option>
+					<option value="connected-routing">Connected Messaging (With Routing)</option>
+				</select>
 			</div>
 			<div class="form-row">
 				<label for="node-config-input-cycletime"><i class="fa fa-refresh"></i> <span data-i18n="ethip.endpoint.label.cycletime"></span></label>
@@ -146,8 +150,8 @@
 				value: "0",
 				validate: RED.validators.number()
 			},
-			micro800: {
-				value: false
+			connectionMode: {
+				value: "standard"
 			},
 			cycletime: {
 				value: 500

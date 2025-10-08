@@ -1,6 +1,6 @@
 {
-    "name": "node-red-contrib-cip-ethernet-ip-enhanced",
-    "version": "2.0.0",
+    "name": "@sumit_shinde_84/node-red-contrib-cip-ethernet-ip-enhanced",
+    "version": "2.0.1",
     "description": "Enhanced Node-RED node for Allen Bradley / Rockwell PLCs with Connected Messaging support (Micro 800/850/870 series)",
     "main": "index.js",
     "dependencies": {
@@ -8,10 +8,10 @@
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/st-one-io/node-red-contrib-cip-ethernet-ip.git"
+        "url": "https://github.com/sumit-shinde-84/node-red-contrib-cip-ethernet-ip-enhanced.git"
     },
     "bugs": {
-        "url": "https://github.com/st-one-io/node-red-contrib-cip-ethernet-ip/issues"
+        "url": "https://github.com/sumit-shinde-84/node-red-contrib-cip-ethernet-ip-enhanced/issues"
     },
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1"
@@ -30,10 +30,11 @@
         "allen",
         "bradley",
         "allen-bradley",
-        "micro800",
-        "micro850",
-        "micro870",
         "connected-messaging",
+        "forward-open",
+        "micro-800",
+        "compactlogix",
+        "controllogix",
         "pccc",
         "node-red"
     ],
@@ -42,6 +43,10 @@
             "ethernet-ip": "red/ethernet-ip.js"
         }
     },
-    "author": "ST-One Ltda.",
+    "author": "Sumit Shinde",
+    "contributors": [
+        "ST-One Ltda. (original author)",
+        "Guilherme Francescon Cittolin <guilherme@st-one.io>"
+    ],
     "license": "GPL-3.0-or-later"
 }
